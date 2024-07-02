@@ -1,0 +1,75 @@
+services:
+
+  # PHP Service
+  app:
+    container_name: ${DOCKER_NAME}_${DOCKER_ENV}_app
+    build:
+      context: ./
+      dockerfile: ./docker/app/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./:/var/www/
+      - ./docker/app/entrypoint.sh:/scripts/entrypoint.sh
+    user: "1000:1000"
+    depends_on:
+      - mariadb
+    networks:
+      - default
+
+  # Nginx Service
+  nginx:
+    container_name: ${DOCKER_NAME}_${DOCKER_ENV}_nginx
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${DOCKER_NAME}_${DOCKER_ENV}_nginx.rule=Host(`scambait.local`)"
+      - "traefik.http.services.${DOCKER_NAME}_${DOCKER_ENV}_nginx.loadbalancer.server.port=80"
+    networks:
+      - default
+      - proxynet
+
+  # MariaDB Service
+  mariadb:
+    container_name: ${DOCKER_NAME}_${DOCKER_ENV}_mariadb
+    image: mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: $DB_ROOT_PASSWORD
+      MARIADB_DATABASE: $DB_DATABASE
+      MARIADB_USER: $DB_USERNAME
+      MARIADB_PASSWORD: $DB_PASSWORD
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - default
+
+  # PHPMyAdmin
+  phpmyadmin:
+    container_name: ${DOCKER_NAME}_${DOCKER_ENV}_phpmyadmin
+    image: phpmyadmin
+    restart: unless-stopped
+    environment:
+      - UPLOAD_LIMIT=300M
+      - PMA_PORT=3306
+      - PMA_HOST=mariadb
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${DOCKER_NAME}_${DOCKER_ENV}_phpmyadmin.rule=Host(`pma.scambait.local`)"
+      - "traefik.http.services.${DOCKER_NAME}_${DOCKER_ENV}_phpmyadmin.loadbalancer.server.port=80"
+    depends_on:
+      - mariadb
+    networks:
+      - default
+      - proxynet
+
+volumes:
+  db_data:
+
+networks:
+  proxynet:
+    external: true
+    name: proxy_network
